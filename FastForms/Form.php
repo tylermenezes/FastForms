@@ -13,6 +13,17 @@ class Form
     public static $no_conflict = FALSE;
 
     /**
+     * Template path for custom form templates.
+     * @var string
+     */
+    public static $template_path = NULL;
+
+    protected static function get_builtin_template_bath()
+    {
+        return dirname(__FILE__) . '/templates';
+    }
+
+    /**
      * Leaving this at FALSE means that users can't leave a string field blank in a form. Setting this to TRUE means "" is an acceptable input for a
      * non-nullable string type. 9/10 times, if you set a field to NOT NULL in the database, you don't want "", but you can disable this check if
      * you want. If you want to disable it on a per-field basis, disable it for the form, then write __validators in the model.
@@ -48,7 +59,12 @@ class Form
      */
     public function isset_post($key)
     {
+        if ($this->get_field_form_type($key) == 'checkbox') {
+            return TRUE;
+        }
+
         $isset = isset($_POST[$this->get_post_name($key)]);
+
         if ($isset && $this->get_post($key) == '' && !$this->enable_empty_strings) {
             return FALSE;
         } else {
@@ -63,7 +79,11 @@ class Form
      */
     public function get_post($key)
     {
-        return $_POST[$this->get_post_name($key)];
+        if ($this->get_field_form_type($key) == 'checkbox') {
+            return $_POST[$this->get_post_name($key)] == 'true' ? TRUE : FALSE;
+        } else {
+            return $_POST[$this->get_post_name($key)];
+        }
     }
 
     /**
@@ -83,7 +103,7 @@ class Form
     public function get_form_data()
     {
         $fields = array();
-        foreach ($field in $this->model_details->get_fields()) {
+        foreach ($this->model_details->get_fields() as $field) {
             if ($this->model_details->is_required($field) && !$this->isset_post($field)) {
                 throw new \TinyDb\ValidationException("$field is required");
             }
@@ -93,17 +113,84 @@ class Form
         return $fields;
     }
 
-    /**
-     * Shortcut for update() or create(): updates if the instance is set, otherwise creates
-     * @param  \TinyDb\Orm $instance Optional, model to update
-     * @return \TinyDb\Orm           Updated/created model
-     */
-    public function process(\TinyDb\Orm $instance = NULL)
+    protected function get_field_form_type($field)
     {
-        if ($instance === NULL) {
-            return $this->create();
+        switch ($this->model_details->properties[$field]->type) {
+            case 'bit':
+            case 'bool':
+            case 'tinyint':
+                return 'checkbox';
+            case 'date':
+            case 'datetime':
+            case 'timestamp':
+            case 'time':
+                return 'date';
+            case 'tinytext':
+            case 'text':
+            case 'mediumtext':
+            case 'longtext':
+            case 'blob':
+            case 'tinyblob':
+            case 'mediumblob':
+            case 'longblob':
+                return 'textarea';
+            case 'enum':
+            case 'set':
+                return 'select';
+            case 'int':
+            case 'smallint':
+            case 'mediumint':
+            case 'bigint':
+            case 'decimal':
+            case 'float':
+            case 'double':
+            case 'real':
+            case 'year':
+            case 'varchar':
+            case 'char':
+            case 'binary':
+            case 'varbinary':
+            default:
+                return 'text';
+        }
+    }
+
+    public function render($template = 'bootstrap', \TinyDb\Orm $instance = NULL, $action = '')
+    {
+        $fields = array();
+        foreach ($this->model_details->properties as $name=>$property) {
+            $property->name = $name;
+
+            $property->display_name = $this->model_details->get_display_name($name);
+            $property->description = $this->model_details->get_description($name);
+            $property->placeholder = $this->model_details->get_placeholder($name);
+            $property->class = $this->model_details->get_class($name);
+
+            if (isset($instance)) {
+                $property->value = $instance->$name;
+            } else if (isset($property->default)) {
+                $property->value = $property->default;
+            } else {
+                $property->value = '';
+            }
+
+            $property->form_name = $this->get_post_name($name);
+
+            $property->form_type = $this->get_field_form_type($name);
+
+            if ($property->auto_increment) {
+                $property->form_type = 'hidden';
+            }
+
+            $fields[$name] = $property;
+        }
+
+        if (file_exists(static::get_builtin_template_bath() . '/' . $template . '.php')) {
+            require(static::get_builtin_template_bath() . '/' . $template . '.php');
+        } else if (isset(static::$template_path) && file_exists(static::$template_path . '/' . $template . '.php')) {
+            require static::$template_path . '/' . $template . '.php';
         } else {
-            return $this->update();
+            throw new \Exception('Template not found!');
         }
     }
 
@@ -111,10 +198,10 @@ class Form
      * Creates a new model from the form
      * @return \TinyDb\Orm New model
      */
-    public function create()
+    public function create($additional_params = array())
     {
         $type = $this->model; // Hack, see OrmDetails for more info
-        return $type::raw_create($this->get_form_data());
+        return $type::raw_create(array_merge($this->get_form_data(), $additional_params));
     }
 
     /**
@@ -122,14 +209,18 @@ class Form
      * @param  \TinyDb\Orm $instance The model instance
      * @return \TinyDb\Orm           Updated model
      */
-    public function update(\TinyDb\Orm $instance)
+    public function update(\TinyDb\Orm $instance, $additional_params = array())
     {
-        foreach ($field in $this->model_details->get_fields()) {
+        foreach ($this->model_details->get_fields() as $field) {
             if ($this->model_details->is_required($field) && !$this->isset_post($field)) {
                 throw new \TinyDb\ValidationException("$field is required");
             }
 
-            $instance->$field = $this->get_post($key);
+            $instance->$field = $this->get_post($field);
+        }
+
+        foreach ($additional_params as $key => $val) {
+            $instance->$key = $val;
         }
 
         $instance->update();
