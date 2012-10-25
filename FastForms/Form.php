@@ -31,6 +31,8 @@ class Form
      */
     public $enable_empty_strings = FALSE;
 
+    public $static_values = array();
+
     public $model;
     public $model_details;
     public function __construct($model)
@@ -59,8 +61,13 @@ class Form
      */
     public function isset_post($key)
     {
-        if ($this->get_field_form_type($key) == 'checkbox') {
+        if (isset($this->static_values[$key])) {
             return TRUE;
+        } else if ($this->get_field_form_type($key) == 'checkbox') {
+            return TRUE;
+        } else if (isset($this->model_details->properties[$key]) &&
+                   ($this->model_details->properties[$key]->type == 'datetime' || $this->model_details->properties[$key]->type == 'timestamp')) {
+            return $this->isset_post($key . '_date') && $this->isset_post($key . '_time');
         }
 
         $isset = isset($_POST[$this->get_post_name($key)]);
@@ -79,8 +86,13 @@ class Form
      */
     public function get_post($key)
     {
-        if ($this->get_field_form_type($key) == 'checkbox') {
+        if (isset($this->static_values[$key])) {
+            return $this->static_values[$key];
+        } else if ($this->get_field_form_type($key) == 'checkbox') {
             return $_POST[$this->get_post_name($key)] == 'true' ? TRUE : FALSE;
+        } else if (isset($this->model_details->properties[$key]) &&
+                   ($this->model_details->properties[$key]->type == 'datetime' || $this->model_details->properties[$key]->type == 'timestamp')) {
+            return $this->parse_datetime($_POST[$this->get_post_name($key . '_date')], $_POST[$this->get_post_name($key . '_time')]);
         } else {
             return $_POST[$this->get_post_name($key)];
         }
@@ -108,7 +120,7 @@ class Form
                 throw new \TinyDb\ValidationException("$field is required");
             }
 
-            $fields[$field] = $this->get_post($key);
+            $fields[$field] = $this->get_post($field);
         }
         return $fields;
     }
@@ -121,9 +133,9 @@ class Form
             case 'tinyint':
                 return 'checkbox';
             case 'date':
+            case 'time':
             case 'datetime':
             case 'timestamp':
-            case 'time':
                 return 'date';
             case 'tinytext':
             case 'text':
@@ -155,10 +167,35 @@ class Form
         }
     }
 
-    public function render($template = 'bootstrap', \TinyDb\Orm $instance = NULL, $action = '')
+    private function parse_datetime($date, $time)
+    {
+        list($y, $m, $d) = explode('-', $date);
+        $time_parts = explode(':', $time);
+        $hour = $time_parts[0];
+        $min = substr($time_parts[1], 0, min(strlen($time_parts[1]) - 2, 2));
+        $a = strtoupper(substr($time_parts[1], -2));
+        $a = substr($a, 0, 1);
+
+        if ($hour == 12) {
+            $hour = 0;
+        }
+
+        if ($a == "P") {
+            $hour += 12;
+        }
+
+        if ($m == 0 || $d == 0 || $y == 0 || $hour < 0 || $hour > 24 || $min < 0 || $min > 59 || ($a != "A" && $a != "P")) {
+            throw new \Exception("Invalid date or time");
+        }
+
+        return mktime($hour, $min, 0, $m, $d, $y);
+    }
+
+    public function render($template = 'bootstrap', \TinyDb\Orm $instance = NULL)
     {
         $fields = array();
         foreach ($this->model_details->properties as $name=>$property) {
+            if (in_array($name, array_keys($this->static_values))) continue;
             $property->name = $name;
 
             $property->display_name = $this->model_details->get_display_name($name);
@@ -166,12 +203,19 @@ class Form
             $property->placeholder = $this->model_details->get_placeholder($name);
             $property->class = $this->model_details->get_class($name);
 
-            if (isset($instance)) {
+            if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+                $property->value = $this->get_post($name);
+            } else if (isset($instance)) {
                 $property->value = $instance->$name;
             } else if (isset($property->default)) {
                 $property->value = $property->default;
             } else {
                 $property->value = '';
+            }
+
+            if ($property->type == 'datetime' || $property->type == 'timestamp') {
+                $property->value_date = date('Y-m-d', $property->value);
+                $property->value_time = date('g:iA', $property->value);
             }
 
             $property->form_name = $this->get_post_name($name);
@@ -198,10 +242,10 @@ class Form
      * Creates a new model from the form
      * @return \TinyDb\Orm New model
      */
-    public function create($additional_params = array())
+    public function create()
     {
         $type = $this->model; // Hack, see OrmDetails for more info
-        return $type::raw_create(array_merge($this->get_form_data(), $additional_params));
+        return $type::raw_create(array_merge($this->get_form_data(), $this->static_values));
     }
 
     /**
@@ -209,7 +253,7 @@ class Form
      * @param  \TinyDb\Orm $instance The model instance
      * @return \TinyDb\Orm           Updated model
      */
-    public function update(\TinyDb\Orm $instance, $additional_params = array())
+    public function update(\TinyDb\Orm $instance)
     {
         foreach ($this->model_details->get_fields() as $field) {
             if ($this->model_details->is_required($field) && !$this->isset_post($field)) {
@@ -219,7 +263,7 @@ class Form
             $instance->$field = $this->get_post($field);
         }
 
-        foreach ($additional_params as $key => $val) {
+        foreach ($this->static_values as $key => $val) {
             $instance->$key = $val;
         }
 
