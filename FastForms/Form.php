@@ -127,43 +127,47 @@ class Form
 
     protected function get_field_form_type($field)
     {
-        switch ($this->model_details->properties[$field]->type) {
-            case 'bit':
-            case 'bool':
-            case 'tinyint':
-                return 'checkbox';
-            case 'date':
-            case 'time':
-            case 'datetime':
-            case 'timestamp':
-                return 'date';
-            case 'tinytext':
-            case 'text':
-            case 'mediumtext':
-            case 'longtext':
-            case 'blob':
-            case 'tinyblob':
-            case 'mediumblob':
-            case 'longblob':
-                return 'textarea';
-            case 'enum':
-            case 'set':
-                return 'select';
-            case 'int':
-            case 'smallint':
-            case 'mediumint':
-            case 'bigint':
-            case 'decimal':
-            case 'float':
-            case 'double':
-            case 'real':
-            case 'year':
-            case 'varchar':
-            case 'char':
-            case 'binary':
-            case 'varbinary':
-            default:
-                return 'text';
+        if (isset($this->model_details->properties[$field])) {
+            switch ($this->model_details->properties[$field]->type) {
+                case 'bit':
+                case 'bool':
+                case 'tinyint':
+                    return 'checkbox';
+                case 'date':
+                case 'time':
+                case 'datetime':
+                case 'timestamp':
+                    return 'date';
+                case 'tinytext':
+                case 'text':
+                case 'mediumtext':
+                case 'longtext':
+                case 'blob':
+                case 'tinyblob':
+                case 'mediumblob':
+                case 'longblob':
+                    return 'textarea';
+                case 'enum':
+                case 'set':
+                    return 'select';
+                case 'int':
+                case 'smallint':
+                case 'mediumint':
+                case 'bigint':
+                case 'decimal':
+                case 'float':
+                case 'double':
+                case 'real':
+                case 'year':
+                case 'varchar':
+                case 'char':
+                case 'binary':
+                case 'varbinary':
+                default:
+                    return 'text';
+            }
+        } else {
+            return 'text';
         }
     }
 
@@ -214,8 +218,13 @@ class Form
             }
 
             if ($property->type == 'datetime' || $property->type == 'timestamp') {
-                $property->value_date = date('Y-m-d', $property->value);
-                $property->value_time = date('g:iA', $property->value);
+                if ($property->value) {
+                    $property->value_date = date('Y-m-d', $property->value);
+                    $property->value_time = date('g:iA', $property->value);
+                } else {
+                    $property->value_date = '';
+                    $property->value_time = '';
+                }
             }
 
             $property->form_name = $this->get_post_name($name);
