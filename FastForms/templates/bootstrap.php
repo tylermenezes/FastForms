@@ -7,6 +7,15 @@
             value="<?=$field->value?>"
             class="<?=$field->class?>"
          />
+    <?php elseif ($field->form_type == 'checkbox') : ?>
+        <?=$field->display_name?>
+        <input
+            type="checkbox"
+            id="<?=$field->form_name?>"
+            name="<?=$field->form_name?>"
+            value="true"
+            class="<?=$field->class?>"
+            <?php if ($field->value) echo 'checked="true"' ?> />
     <?php else : ?>
         <div class="control-group">
             <label class="control-label" for="<?=$field->form_name?>"><?=$field->display_name?></label>
@@ -19,14 +28,6 @@
                             <option <?php if ($val == $field->value) echo 'selected="true"'; ?> value="<?=$val?>"><?=$val?></option>
                         <?php endforeach; ?>
                     </select>
-                <?php elseif($field->form_type == 'checkbox') : ?>
-                    <input
-                        type="checkbox"
-                        id="<?=$field->form_name?>"
-                        name="<?=$field->form_name?>"
-                        value="true"
-                        class="<?=$field->class?>"
-                        <?php if ($field->value) echo 'checked="true"' ?> />
                 <?php elseif($field->form_type == 'date') : ?>
                     <input
                         type="date"
