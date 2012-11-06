@@ -265,6 +265,10 @@ class Form
     public function update(\TinyDb\Orm $instance)
     {
         foreach ($this->model_details->get_fields() as $field) {
+            if (in_array($field, array_keys($this->static_values))) {
+                continue;
+            }
+
             if ($this->model_details->is_required($field) && !$this->isset_post($field)) {
                 throw new \TinyDb\ValidationException("$field is required");
             }
@@ -272,9 +276,9 @@ class Form
             $instance->$field = $this->get_post($field);
         }
 
-        foreach ($this->static_values as $key => $val) {
+        /*foreach ($this->static_values as $key => $val) {
             $instance->$key = $val;
-        }
+        }*/
 
         $instance->update();
 
